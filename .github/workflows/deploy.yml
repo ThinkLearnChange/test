@@ -1,0 +1,41 @@
+name: deploy-infra
+
+on:
+  pull_request: { branches: [main] }
+  push: { branches: [main] }
+
+permissions: { id-token: write, contents: read }
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: az bicep build --file main.bicep
+
+  what-if:
+    if: github.event_name == 'pull_request'
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4   # necessaire pour lire main.bicep
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: az deployment group what-if -g rg-prod -f main.bicep -p main.prod.bicepparam
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: lint
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: az deployment group create -g rg-prod -f main.bicep -p main.prod.bicepparam
